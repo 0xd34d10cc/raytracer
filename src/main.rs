@@ -1,7 +1,20 @@
 use std::fs::File;
 use std::io::{self, Write};
 use std::ops::{Add, AddAssign, Sub, SubAssign, Div, DivAssign, Mul, MulAssign, Neg, Range};
-use std::cmp::{min, max};
+
+use rand::random;
+
+fn clamp(x: f64, min: f64, max: f64) -> f64 {
+    if x < min {
+        return min;
+    }
+
+    if x > max {
+        return max;
+    }
+
+    return x;
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vec3([f64; 3]);
@@ -178,17 +191,18 @@ impl Image {
     }
 
     // write as PPM
-    pub fn write<W: Write>(&self, w: &mut W) -> io::Result<()> {
+    pub fn write<W: Write>(&self, w: &mut W, samples_per_pixel: usize) -> io::Result<()> {
         writeln!(w, "P3")?; // means that colors are in ASCII
         writeln!(w, "{} {}", self.width, self.height)?;
         writeln!(w, "255")?; // max color value
+
+        let scale = 1.0 / samples_per_pixel as f64;
         for line in self.data.chunks(self.width) {
             for pixel in line {
-                const SCALE: f64 = 255.999;
-                let r = (pixel.x() * SCALE) as u8;
-                let g = (pixel.y() * SCALE) as u8;
-                let b = (pixel.z() * SCALE) as u8;
-                write!(w, "{} {} {} ", r, g, b)?;
+                let r = 256.0 * clamp(pixel.x() * scale, 0.0, 0.999);
+                let g = 256.0 * clamp(pixel.y() * scale, 0.0, 0.999);
+                let b = 256.0 * clamp(pixel.z() * scale, 0.0, 0.999);
+                write!(w, "{} {} {} ", r as u8, g as u8, b as u8)?;
             }
             writeln!(w, "")?;
         }
@@ -312,14 +326,38 @@ impl<T> Hit for Vec<T> where T: Hit {
     }
 }
 
+struct Camera {
+    lower_left_corner: Vec3,
+    horizontal: Vec3,
+    vertical: Vec3,
+    origin: Vec3,
+}
+
+impl Camera {
+    fn ray(&self, u: f64, v: f64) -> Ray {
+        Ray {
+            origin: self.origin,
+            direction: self.lower_left_corner + u*self.horizontal + v*self.vertical - self.origin,
+        }
+    }
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Camera {
+            lower_left_corner: Vec3([-2.0, -1.0, -1.0]),
+            horizontal:  Vec3([4.0, 0.0, 0.0]),
+            vertical: Vec3([0.0, 2.0, 0.0]),
+            origin: Vec3::default(),
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut image = Image::new(200, 100);
 
-    let lower_left = Vec3([-2.0, -1.0, -1.0]);
-    let horizontal = Vec3([4.0, 0.0, 0.0]);
-    let vertical = Vec3([0.0, 2.0, 0.0]);
-    let origin = Vec3::default();
-
+    let samples_per_pixel = 100;
+    let camera = Camera::default();
     let world = vec![
         Sphere {
             center: Vec3([0.0, 0.0, -1.0]),
@@ -340,25 +378,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         for i in 0..image.width() {
-            let u = i as f64 / image.width() as f64;
-            let v = j as f64 / image.height() as f64;
-            let ray = Ray {
-                origin,
-                direction: lower_left + u * horizontal + v * vertical,
-            };
+            let mut pixel = Vec3::white();
+            for _ in 0..samples_per_pixel {
+                let u = (i as f64 + random::<f64>()) / image.width() as f64;
+                let v = (j as f64 + random::<f64>()) / image.height() as f64;
+                let ray = camera.ray(u, v);
 
-            let pixel = match world.hit(ray, 0.0..std::f64::INFINITY) {
-                Some(r) => {
-                    0.5 * (r.normal + Vec3([1.0, 1.0, 1.0])) // scale [-1; 1] -> [0. 1]
-                },
-                None => background_color(ray)
-            };
+                pixel += match world.hit(ray, 0.0..std::f64::INFINITY) {
+                    Some(record) => 0.5 * (record.normal + Vec3([1.0, 1.0, 1.0])),
+                    None => background_color(ray)
+                };
+            }
 
             image.set((i, image.height() - j - 1), pixel);
         }
     }
 
     let mut out = File::create("out.ppm")?;
-    image.write(&mut out)?;
+    image.write(&mut out, samples_per_pixel)?;
     Ok(())
 }
