@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{self, Write};
 use std::ops::{Add, AddAssign, Sub, SubAssign, Div, DivAssign, Mul, MulAssign, Neg, Range};
+use std::cmp::{min, max};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vec3([f64; 3]);
@@ -219,7 +220,7 @@ impl Ray {
 }
 
 // determines the "background" color
-fn ray_color(ray: Ray) -> Vec3 {
+fn background_color(ray: Ray) -> Vec3 {
     let unit = ray.direction().unit();
     let t = 0.5 * (unit.y() + 1.0); // scale [-1; 1] -> [0; 1]
 
@@ -271,13 +272,13 @@ impl Hit for Sphere {
 
         let hit = |t| {
             let p = ray.at(t);
-            let normal = (p - self.center) / self.radius;
-            let front_face = dot(ray.direction(), normal).is_sign_negative();
+            let outward_normal = (p - self.center) / self.radius;
+            let front_face = dot(ray.direction(), outward_normal).is_sign_negative();
 
             Some(HitRecord {
                 t,
                 p,
-                normal: if front_face { normal } else { -normal } ,
+                normal: if front_face { outward_normal } else { -outward_normal },
                 front_face
             })
         };
@@ -319,10 +320,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vertical = Vec3([0.0, 2.0, 0.0]);
     let origin = Vec3::default();
 
-    let sphere  = Sphere {
-        center: Vec3([0.0, 0.0, -1.0]),
-        radius: 0.5
-    };
+    let world = vec![
+        Sphere {
+            center: Vec3([0.0, 0.0, -1.0]),
+            radius: 0.5
+        },
+        Sphere {
+            center: Vec3([0.0, -100.5, -1.0]),
+            radius: 100.0
+        },
+    ];
 
     for j in 0..image.height() {
         // report progress
@@ -340,11 +347,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 direction: lower_left + u * horizontal + v * vertical,
             };
 
-            let pixel = match sphere.hit(ray, -1.0..1.0) {
+            let pixel = match world.hit(ray, 0.0..std::f64::INFINITY) {
                 Some(r) => {
                     0.5 * (r.normal + Vec3([1.0, 1.0, 1.0])) // scale [-1; 1] -> [0. 1]
                 },
-                None => ray_color(ray)
+                None => background_color(ray)
             };
 
             image.set((i, image.height() - j - 1), pixel);
