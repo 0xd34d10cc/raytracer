@@ -1,8 +1,12 @@
 use std::fs::File;
 use std::io::{self, Write};
-use std::ops::{Add, AddAssign, Sub, SubAssign, Div, DivAssign, Mul, MulAssign, Neg, Range};
+use std::ops::Range;
 
 use rand::random;
+
+use vec3::{vec3, Vec3};
+
+mod vec3;
 
 fn clamp(x: f64, min: f64, max: f64) -> f64 {
     if x < min {
@@ -14,147 +18,6 @@ fn clamp(x: f64, min: f64, max: f64) -> f64 {
     }
 
     return x;
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Vec3([f64; 3]);
-
-impl Vec3 {
-    pub fn white() -> Self {
-        Vec3([1.0, 1.0, 1.0])
-    }
-
-    pub fn red() -> Self {
-        Vec3([1.0, 0.0, 0.0])
-    }
-
-    pub fn unit(&self) -> Self {
-        *self / self.length()
-    }
-
-    pub fn x(&self) -> f64 {
-        self.0[0]
-    }
-
-    pub fn y(&self) -> f64 {
-        self.0[1]
-    }
-
-    pub fn z(&self) -> f64 {
-        self.0[2]
-    }
-
-    pub fn length_squared(&self) -> f64 {
-        self.0[0] * self.0[0] + self.0[1] * self.0[1] + self.0[2] * self.0[2]
-    }
-
-    pub fn length(&self) -> f64 {
-        self.length_squared().sqrt()
-    }
-}
-
-impl Default for Vec3 {
-    fn default() -> Self {
-        Vec3([0.0; 3])
-    }
-}
-
-impl From<(f64, f64, f64)> for Vec3 {
-    fn from((x, y, z): (f64, f64, f64)) -> Vec3 {
-        Vec3([x, y, z])
-    }
-}
-
-impl Neg for Vec3 {
-    type Output = Vec3;
-
-    fn neg(self) -> Self {
-        Vec3([-self.0[0], -self.0[1], -self.0[1]])
-    }
-}
-
-impl Add for Vec3 {
-    type Output = Vec3;
-
-    fn add(self, rhs: Vec3) -> Vec3 {
-        Vec3([self.x() + rhs.x(), self.y() + rhs.y(), self.z() + rhs.z()])
-    }
-}
-
-impl AddAssign for Vec3 {
-    fn add_assign(&mut self, rhs: Vec3) {
-        self.0[0] += rhs.0[0];
-        self.0[1] += rhs.0[1];
-        self.0[2] += rhs.0[2];
-    }
-}
-
-impl Sub for Vec3 {
-    type Output = Vec3;
-
-    fn sub(self, rhs: Vec3) -> Vec3 {
-        Vec3([self.x() - rhs.x(), self.y() - rhs.y(), self.z() - rhs.z()])
-    }
-}
-
-impl SubAssign for Vec3 {
-    fn sub_assign(&mut self, rhs: Vec3) {
-        self.0[0] -= rhs.0[0];
-        self.0[1] -= rhs.0[1];
-        self.0[2] -= rhs.0[2];
-    }
-}
-
-impl Mul<f64> for Vec3 {
-    type Output = Vec3;
-
-    fn mul(self, rhs: f64) -> Vec3 {
-        Vec3([self.x() * rhs, self.y() * rhs, self.z() * rhs])
-    }
-}
-
-impl Mul<Vec3> for f64 {
-    type Output = Vec3;
-
-    fn mul(self, rhs: Vec3) -> Vec3 {
-        rhs * self
-    }
-}
-
-impl MulAssign<f64> for Vec3 {
-    fn mul_assign(&mut self, rhs: f64) {
-        self.0[0] *= rhs;
-        self.0[1] *= rhs;
-        self.0[2] *= rhs;
-    }
-}
-
-impl Div<f64> for Vec3 {
-    type Output = Vec3;
-
-    fn div(self, rhs: f64) -> Vec3 {
-        Vec3([self.x() / rhs, self.y() / rhs, self.z() / rhs])
-    }
-}
-
-impl DivAssign<f64> for Vec3 {
-    fn div_assign(&mut self, rhs: f64) {
-        self.0[0] /= rhs;
-        self.0[1] /= rhs;
-        self.0[2] /= rhs;
-    }
-}
-
-pub fn dot(lhs: Vec3, rhs: Vec3) -> f64 {
-    lhs.x() * rhs.x() + lhs.y() * rhs.y() + lhs.z() * rhs.z()
-}
-
-pub fn cross(lhs: Vec3, rhs: Vec3) -> Vec3 {
-    Vec3([
-        lhs.y() * rhs.z() - lhs.z() * rhs.y(),
-        lhs.z() * rhs.x() - lhs.x() * rhs.z(),
-        lhs.x() * rhs.y() - rhs.y() * rhs.x(),
-    ])
 }
 
 pub struct Image {
@@ -191,17 +54,16 @@ impl Image {
     }
 
     // write as PPM
-    pub fn write<W: Write>(&self, w: &mut W, samples_per_pixel: usize) -> io::Result<()> {
+    pub fn write<W: Write>(&self, w: &mut W) -> io::Result<()> {
         writeln!(w, "P3")?; // means that colors are in ASCII
         writeln!(w, "{} {}", self.width, self.height)?;
         writeln!(w, "255")?; // max color value
 
-        let scale = 1.0 / samples_per_pixel as f64;
         for line in self.data.chunks(self.width) {
             for pixel in line {
-                let r = 256.0 * clamp(pixel.x() * scale, 0.0, 0.999);
-                let g = 256.0 * clamp(pixel.y() * scale, 0.0, 0.999);
-                let b = 256.0 * clamp(pixel.z() * scale, 0.0, 0.999);
+                let r = 256.0 * clamp(pixel.x, 0.0, 0.999);
+                let g = 256.0 * clamp(pixel.y, 0.0, 0.999);
+                let b = 256.0 * clamp(pixel.z, 0.0, 0.999);
                 write!(w, "{} {} {} ", r as u8, g as u8, b as u8)?;
             }
             writeln!(w, "")?;
@@ -236,17 +98,18 @@ impl Ray {
 // determines the "background" color
 fn background_color(ray: Ray) -> Vec3 {
     let unit = ray.direction().unit();
-    let t = 0.5 * (unit.y() + 1.0); // scale [-1; 1] -> [0; 1]
+    let t = 0.5 * (unit.y + 1.0); // scale [-1; 1] -> [0; 1]
 
     // blend white + blue from bottom to top
-    Vec3::white() * (1.0 - t) + Vec3([0.5, 0.7, 1.0]) * t
+    Vec3::white() * (1.0 - t) + Vec3::new(0.5, 0.7, 1.0) * t
 }
 
 struct Sphere {
     center: Vec3,
-    radius: f64
+    radius: f64,
 }
 
+// Information about ray hit
 #[derive(Debug, Clone)]
 struct HitRecord {
     t: f64,           // "time" of hit
@@ -273,7 +136,7 @@ impl Hit for Sphere {
 
         // ax^2 + 2bx + c = 0
         let a = ray.direction().length_squared();
-        let half_b = dot(oc, ray.direction());
+        let half_b = oc.dot(ray.direction());
         let c = oc.length_squared() - self.radius * self.radius;
         let discriminant = half_b * half_b - a * c;
 
@@ -287,13 +150,17 @@ impl Hit for Sphere {
         let hit = |t| {
             let p = ray.at(t);
             let outward_normal = (p - self.center) / self.radius;
-            let front_face = dot(ray.direction(), outward_normal).is_sign_negative();
+            let front_face = ray.direction().dot(outward_normal).is_sign_negative();
 
             Some(HitRecord {
                 t,
                 p,
-                normal: if front_face { outward_normal } else { -outward_normal },
-                front_face
+                normal: if front_face {
+                    outward_normal
+                } else {
+                    -outward_normal
+                },
+                front_face,
             })
         };
 
@@ -310,7 +177,10 @@ impl Hit for Sphere {
     }
 }
 
-impl<T> Hit for Vec<T> where T: Hit {
+impl<T> Hit for Vec<T>
+where
+    T: Hit,
+{
     fn hit(&self, ray: Ray, range: Range<f64>) -> Option<HitRecord> {
         let mut record = None;
         let mut max_t = range.end;
@@ -337,7 +207,8 @@ impl Camera {
     fn ray(&self, u: f64, v: f64) -> Ray {
         Ray {
             origin: self.origin,
-            direction: self.lower_left_corner + u*self.horizontal + v*self.vertical - self.origin,
+            direction: self.lower_left_corner + u * self.horizontal + v * self.vertical
+                - self.origin,
         }
     }
 }
@@ -345,10 +216,27 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Camera {
-            lower_left_corner: Vec3([-2.0, -1.0, -1.0]),
-            horizontal:  Vec3([4.0, 0.0, 0.0]),
-            vertical: Vec3([0.0, 2.0, 0.0]),
+            lower_left_corner: vec3(-2.0, -1.0, -1.0),
+            horizontal: vec3(4.0, 0.0, 0.0),
+            vertical: vec3(0.0, 2.0, 0.0),
             origin: Vec3::default(),
+        }
+    }
+}
+
+fn random_unit_vec3() -> Vec3 {
+    vec3(random::<f64>(), random::<f64>(), random::<f64>())
+}
+
+fn random_vec3(min: f64, max: f64) -> Vec3 {
+    Vec3::splat(min) + random_unit_vec3() * (max - min)
+}
+
+fn random_in_unit_sphere() -> Vec3 {
+    loop {
+        let v = random_vec3(-1.0, 1.0);
+        if v.length_squared() < 1.0 {
+            break v;
         }
     }
 }
@@ -360,12 +248,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let camera = Camera::default();
     let world = vec![
         Sphere {
-            center: Vec3([0.0, 0.0, -1.0]),
-            radius: 0.5
+            center: vec3(0.0, 0.0, -1.0),
+            radius: 0.5,
         },
         Sphere {
-            center: Vec3([0.0, -100.5, -1.0]),
-            radius: 100.0
+            center: vec3(0.0, -100.5, -1.0),
+            radius: 100.0,
         },
     ];
 
@@ -382,19 +270,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for _ in 0..samples_per_pixel {
                 let u = (i as f64 + random::<f64>()) / image.width() as f64;
                 let v = (j as f64 + random::<f64>()) / image.height() as f64;
-                let ray = camera.ray(u, v);
+                let mut ray = camera.ray(u, v);
 
-                pixel += match world.hit(ray, 0.0..std::f64::INFINITY) {
-                    Some(record) => 0.5 * (record.normal + Vec3([1.0, 1.0, 1.0])),
-                    None => background_color(ray)
+                const MAX_BOUNCES: usize = 50;
+
+                let mut brightness = 1.0;
+                let mut i = 0;
+                let color = loop {
+                    if i > MAX_BOUNCES {
+                        break Vec3::black();
+                    }
+
+                    match world.hit(ray, 0.001..std::f64::INFINITY) {
+                        Some(record) => {
+                            let target = record.p + record.normal + random_in_unit_sphere();
+
+                            // bounce
+                            ray = Ray {
+                                origin: record.p,
+                                direction: target - record.p
+                            };
+
+                            i += 1;
+
+                            // light partially gets absorbed
+                            brightness *= 0.5;
+
+                            // continue
+                        },
+                        None => break background_color(ray),
+                    }
                 };
+
+                pixel += color * brightness;
             }
 
-            image.set((i, image.height() - j - 1), pixel);
+
+            let color = pixel / samples_per_pixel as f64;
+
+            image.set(
+                (i, image.height() - j - 1),
+                color //.sqrt(),
+            );
         }
     }
 
     let mut out = File::create("out.ppm")?;
-    image.write(&mut out, samples_per_pixel)?;
+    image.write(&mut out)?;
     Ok(())
 }
