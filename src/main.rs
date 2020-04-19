@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Write, BufWriter};
 use std::ops::Range;
 use std::f64;
 
@@ -405,7 +405,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut out = File::create("out.ppm")?;
+    let out = File::create("out.ppm")?;
+    let mut out = BufWriter::new(out);
     image.write(&mut out)?;
     Ok(())
 }
