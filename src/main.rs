@@ -9,14 +9,17 @@ use rand::rngs::ThreadRng;
 use rand::Rng;
 use rayon::prelude::*;
 
+#[inline(always)]
 fn white() -> Vec3 {
     vec3(1.0, 1.0, 1.0)
 }
 
+#[inline(always)]
 fn black() -> Vec3 {
     vec3(0.0, 0.0, 0.0)
 }
 
+#[inline(always)]
 fn clamp(x: f32, min: f32, max: f32) -> f32 {
     if x < min {
         return min;
@@ -94,15 +97,18 @@ struct Ray {
 }
 
 impl Ray {
+    #[inline(always)]
     fn origin(&self) -> Vec3 {
         self.origin
     }
 
+    #[inline(always)]
     fn direction(&self) -> Vec3 {
         self.direction
     }
 
     // Calculate position of ray at "time" t
+    #[inline(always)]
     fn at(&self, t: f32) -> Vec3 {
         self.origin + self.direction * t
     }
@@ -146,6 +152,7 @@ impl Hit for Sphere {
     // (o + d*t - c) * (o + d*t - c) - R*R = 0 is solvable # d = direction, o = origin
     //    =>
     // d*t*d*t + 2*d*t*(o - c) + (o - c) * (o - c) - R*R = 0
+    #[inline(always)]
     fn hit(&self, ray: Ray, range: Range<f32>) -> Option<HitRecord> {
         let oc = ray.origin() - self.center; // o - c
 
@@ -197,6 +204,7 @@ impl<T> Hit for Vec<T>
 where
     T: Hit,
 {
+    #[inline(always)]
     fn hit(&self, ray: Ray, range: Range<f32>) -> Option<HitRecord> {
         let mut record = None;
         let mut max_t = range.end;
@@ -230,6 +238,7 @@ enum MaterialKind {
 }
 
 impl Material {
+    #[inline(always)]
     fn scatter(
         &self,
         rng: &mut ThreadRng,
@@ -271,6 +280,7 @@ struct Camera {
 }
 
 impl Camera {
+    #[inline(always)]
     fn ray(&self, u: f32, v: f32) -> Ray {
         Ray {
             origin: self.origin,
@@ -291,11 +301,13 @@ impl Default for Camera {
     }
 }
 
+#[inline(always)]
 fn reflect(v: Vec3, normal: Vec3) -> Vec3 {
     v - 2.0 * v.dot(normal) * normal
 }
 
 // cos(x) distribution
+#[inline(always)]
 fn random_unit_vec3(rng: &mut ThreadRng) -> Vec3 {
     let a = rng.gen::<f32>() * 2.0 * f32::consts::PI;
     let z = -1.0 + rng.gen::<f32>() * 2.0;
@@ -304,10 +316,12 @@ fn random_unit_vec3(rng: &mut ThreadRng) -> Vec3 {
     vec3(r * f32::cos(a), r * f32::sin(a), z)
 }
 
+#[inline(always)]
 fn random_vec3(rng: &mut ThreadRng, min: f32, max: f32) -> Vec3 {
     Vec3::splat(min) + vec3(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) * (max - min)
 }
 
+#[inline(always)]
 fn random_in_unit_sphere(rng: &mut ThreadRng) -> Vec3 {
     loop {
         let v = random_vec3(rng, -1.0, 1.0);
