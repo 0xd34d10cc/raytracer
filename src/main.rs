@@ -1,15 +1,22 @@
 use std::fs::File;
 use std::io::{self, Write, BufWriter};
 use std::ops::Range;
-use std::f64;
+use std::f32;
 
+use indicatif::ProgressIterator;
 use rand::random;
+use glam::{Vec3, vec3};
 
-use vec3::{vec3, Vec3};
 
-mod vec3;
+fn white() -> Vec3 {
+    vec3(1.0, 1.0, 1.0)
+}
 
-fn clamp(x: f64, min: f64, max: f64) -> f64 {
+fn black() -> Vec3 {
+    vec3(0.0, 0.0, 0.0)
+}
+
+fn clamp(x: f32, min: f32, max: f32) -> f32 {
     if x < min {
         return min;
     }
@@ -62,9 +69,9 @@ impl Image {
 
         for line in self.data.chunks(self.width) {
             for pixel in line {
-                let r = 256.0 * clamp(pixel.x, 0.0, 0.999);
-                let g = 256.0 * clamp(pixel.y, 0.0, 0.999);
-                let b = 256.0 * clamp(pixel.z, 0.0, 0.999);
+                let r = 256.0 * clamp(pixel.x(), 0.0, 0.999);
+                let g = 256.0 * clamp(pixel.y(), 0.0, 0.999);
+                let b = 256.0 * clamp(pixel.z(), 0.0, 0.999);
                 write!(w, "{} {} {} ", r as u8, g as u8, b as u8)?;
             }
             writeln!(w, "")?;
@@ -91,30 +98,30 @@ impl Ray {
     }
 
     // Calculate position of ray at "time" t
-    fn at(&self, t: f64) -> Vec3 {
+    fn at(&self, t: f32) -> Vec3 {
         self.origin + self.direction * t
     }
 }
 
 // determines the "background" color
 fn background_color(ray: Ray) -> Vec3 {
-    let unit = ray.direction().unit();
-    let t = 0.5 * (unit.y + 1.0); // scale [-1; 1] -> [0; 1]
+    let unit = ray.direction().normalize();
+    let t = 0.5 * (unit.y() + 1.0); // scale [-1; 1] -> [0; 1]
 
     // blend white + blue from bottom to top
-    Vec3::white() * (1.0 - t) + Vec3::new(0.5, 0.7, 1.0) * t
+    white() * (1.0 - t) + Vec3::new(0.5, 0.7, 1.0) * t
 }
 
 struct Sphere {
     center: Vec3,
-    radius: f64,
+    radius: f32,
     material: Material,
 }
 
 // Information about ray hit
 #[derive(Debug, Clone)]
 struct HitRecord {
-    t: f64,                 // "time" of hit
+    t: f32,                 // "time" of hit
     p: Vec3,                // point at which hit have happened
     normal: Vec3,           // normal to the surface at point P
     front_face: bool,       // true if ray is outside the object
@@ -122,7 +129,7 @@ struct HitRecord {
 }
 
 trait Hit {
-    fn hit(&self, ray: Ray, range: Range<f64>) -> Option<HitRecord>;
+    fn hit(&self, ray: Ray, range: Range<f32>) -> Option<HitRecord>;
 }
 
 impl Hit for Sphere {
@@ -134,7 +141,7 @@ impl Hit for Sphere {
     // (o + d*t - c) * (o + d*t - c) - R*R = 0 is solvable # d = direction, o = origin
     //    =>
     // d*t*d*t + 2*d*t*(o - c) + (o - c) * (o - c) - R*R = 0
-    fn hit(&self, ray: Ray, range: Range<f64>) -> Option<HitRecord> {
+    fn hit(&self, ray: Ray, range: Range<f32>) -> Option<HitRecord> {
         let oc = ray.origin() - self.center; // o - c
 
         // ax^2 + 2bx + c = 0
@@ -185,7 +192,7 @@ impl<T> Hit for Vec<T>
 where
     T: Hit,
 {
-    fn hit(&self, ray: Ray, range: Range<f64>) -> Option<HitRecord> {
+    fn hit(&self, ray: Ray, range: Range<f32>) -> Option<HitRecord> {
         let mut record = None;
         let mut max_t = range.end;
 
@@ -208,7 +215,7 @@ where
 struct Material {
     kind: MaterialKind,
     albedo: Vec3,
-    fuzz: f64,
+    fuzz: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -229,7 +236,7 @@ impl Material {
                 Some((self.albedo, scattered))
             },
             MaterialKind::Metal => {
-                let reflected = reflect(ray.direction.unit(), normal);
+                let reflected = reflect(ray.direction.normalize(), normal);
                 let scattered = Ray {
                     origin: at,
                     direction: reflected + self.fuzz * random_in_unit_sphere(),
@@ -253,11 +260,13 @@ struct Camera {
 }
 
 impl Camera {
-    fn ray(&self, u: f64, v: f64) -> Ray {
+    fn ray(&self, u: f32, v: f32) -> Ray {
         Ray {
             origin: self.origin,
-            direction: self.lower_left_corner + u * self.horizontal + v * self.vertical
-                - self.origin,
+            direction:
+                self.lower_left_corner +
+                u * self.horizontal +
+                v * self.vertical- self.origin,
         }
     }
 }
@@ -279,15 +288,15 @@ fn reflect(v: Vec3, normal: Vec3) -> Vec3 {
 
 // cos(x) distribution
 fn random_unit_vec3() -> Vec3 {
-    let a = random::<f64>() * 2.0 * f64::consts::PI;
-    let z = -1.0 + random::<f64>() * 2.0;
+    let a = random::<f32>() * 2.0 * f32::consts::PI;
+    let z = -1.0 + random::<f32>() * 2.0;
     let r = (1.0 - z).sqrt();
 
-    vec3(r * f64::cos(a), r * f64::sin(a), z)
+    vec3(r * f32::cos(a), r * f32::sin(a), z)
 }
 
-fn random_vec3(min: f64, max: f64) -> Vec3 {
-    Vec3::splat(min) + vec3(random::<f64>(), random::<f64>(), random::<f64>()) * (max - min)
+fn random_vec3(min: f32, max: f32) -> Vec3 {
+    Vec3::splat(min) + vec3(random::<f32>(), random::<f32>(), random::<f32>()) * (max - min)
 }
 
 fn random_in_unit_sphere() -> Vec3 {
@@ -309,7 +318,7 @@ fn random_in_unit_sphere() -> Vec3 {
 // }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut image = Image::new(200, 100);
+    let mut image = Image::new(1600, 800);
 
     let samples_per_pixel = 100;
     let camera = Camera::default();
@@ -338,7 +347,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             material: Material {
                 kind: MaterialKind::Metal,
                 albedo: vec3(0.8, 0.6, 0.2),
-                fuzz: 1.0,
+                fuzz: 0.7,
             }
         },
         Sphere {
@@ -352,19 +361,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     ];
 
-    for j in 0..image.height() {
-        // report progress
-        println!(
-            "Scanlines remaining: {:4} ({:.2}% done)",
-            image.height() - j,
-            j as f64 / image.height() as f64 * 100.0
-        );
-
+    for j in (0..image.height()).progress() {
         for i in 0..image.width() {
-            let mut pixel = Vec3::white();
+            let mut pixel = black();
             for _ in 0..samples_per_pixel {
-                let u = (i as f64 + random::<f64>()) / image.width() as f64;
-                let v = (j as f64 + random::<f64>()) / image.height() as f64;
+                let u = (i as f32 + random::<f32>()) / image.width() as f32;
+                let v = (j as f32 + random::<f32>()) / image.height() as f32;
                 let mut ray = camera.ray(u, v);
 
                 const MAX_BOUNCES: usize = 50;
@@ -373,10 +375,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut attenuation = vec3(1.0, 1.0, 1.0);
                 let color = loop {
                     if i > MAX_BOUNCES {
-                        break Vec3::black();
+                        break black();
                     }
 
-                    match world.hit(ray, 0.001..std::f64::INFINITY) {
+                    match world.hit(ray, 0.001..f32::INFINITY) {
                         Some(hit) => {
                             match hit.material.scatter(ray, hit.p, hit.normal) {
                                 Some((attenuation_increment, scattered)) => {
@@ -384,7 +386,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     ray = scattered;
                                     i += 1;
                                 },
-                                None => break Vec3::black(),
+                                None => break black(),
                             }
 
                         },
@@ -396,11 +398,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
 
-            let color = pixel / samples_per_pixel as f64;
+            let color = pixel / samples_per_pixel as f32;
+            let color = vec3(color.x().sqrt(), color.y().sqrt(), color.z().sqrt()); // gamma correction
 
             image.set(
                 (i, image.height() - j - 1),
-                color.sqrt(), // gamma correction
+                color
             );
         }
     }
