@@ -1,14 +1,13 @@
-use std::fs::File;
-use std::io::{self, Write, BufWriter};
-use std::ops::Range;
 use std::f32;
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
+use std::ops::Range;
 
-use rayon::prelude::*;
-use glam::{Vec3, vec3};
-use rand::Rng;
-use rand::rngs::ThreadRng;
+use glam::{vec3, Vec3};
 use indicatif::ParallelProgressIterator;
-
+use rand::rngs::ThreadRng;
+use rand::Rng;
+use rayon::prelude::*;
 
 fn white() -> Vec3 {
     vec3(1.0, 1.0, 1.0)
@@ -127,11 +126,11 @@ struct Sphere {
 // Information about ray hit
 #[derive(Debug, Clone)]
 struct HitRecord {
-    t: f32,                 // "time" of hit
-    p: Vec3,                // point at which hit have happened
-    normal: Vec3,           // normal to the surface at point P
-    front_face: bool,       // true if ray is outside the object
-    material: Material,     // material of hit target
+    t: f32,             // "time" of hit
+    p: Vec3,            // point at which hit have happened
+    normal: Vec3,       // normal to the surface at point P
+    front_face: bool,   // true if ray is outside the object
+    material: Material, // material of hit target
 }
 
 trait Hit {
@@ -231,16 +230,22 @@ enum MaterialKind {
 }
 
 impl Material {
-    fn scatter(&self, rng: &mut ThreadRng, ray: Ray, at: Vec3, normal: Vec3) -> Option<(Vec3, Ray)> {
+    fn scatter(
+        &self,
+        rng: &mut ThreadRng,
+        ray: Ray,
+        at: Vec3,
+        normal: Vec3,
+    ) -> Option<(Vec3, Ray)> {
         match self.kind {
             MaterialKind::Lambertian => {
                 let direction = normal + random_unit_vec3(rng);
                 let scattered = Ray {
                     origin: at,
-                    direction
+                    direction,
                 };
                 Some((self.albedo, scattered))
-            },
+            }
             MaterialKind::Metal => {
                 let reflected = reflect(ray.direction.normalize(), normal);
                 let scattered = Ray {
@@ -269,10 +274,8 @@ impl Camera {
     fn ray(&self, u: f32, v: f32) -> Ray {
         Ray {
             origin: self.origin,
-            direction:
-                self.lower_left_corner +
-                u * self.horizontal +
-                v * self.vertical- self.origin,
+            direction: self.lower_left_corner + u * self.horizontal + v * self.vertical
+                - self.origin,
         }
     }
 }
@@ -345,7 +348,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kind: MaterialKind::Lambertian,
                 albedo: vec3(0.8, 0.8, 0.0),
                 fuzz: 1.0,
-            }
+            },
         },
         Sphere {
             center: vec3(1.0, 0.0, -1.0),
@@ -354,7 +357,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kind: MaterialKind::Metal,
                 albedo: vec3(0.8, 0.6, 0.2),
                 fuzz: 0.7,
-            }
+            },
         },
         Sphere {
             center: vec3(-1.0, 0.0, -1.0),
@@ -363,59 +366,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kind: MaterialKind::Metal,
                 albedo: vec3(0.8, 0.8, 0.8),
                 fuzz: 0.3,
-            }
-        }
+            },
+        },
     ];
 
     let height = image.height();
     let width = image.width();
 
-    image.data_mut().par_chunks_mut(width).enumerate().progress_count(height as u64).for_each(|(k, line)| {
-        let mut rng = rand::thread_rng();
+    image
+        .data_mut()
+        .par_chunks_mut(width)
+        .enumerate()
+        .progress_count(height as u64)
+        .for_each(|(k, line)| {
+            let mut rng = rand::thread_rng();
 
-        let j = height - k - 1;
-        for i in 0..width {
-            let mut pixel = black();
-            for _ in 0..samples_per_pixel {
-                let u = (i as f32 + rng.gen::<f32>()) / width as f32;
-                let v = (j as f32 + rng.gen::<f32>()) / height as f32;
-                let mut ray = camera.ray(u, v);
+            let j = height - k - 1;
+            for i in 0..width {
+                let mut pixel = black();
+                for _ in 0..samples_per_pixel {
+                    let u = (i as f32 + rng.gen::<f32>()) / width as f32;
+                    let v = (j as f32 + rng.gen::<f32>()) / height as f32;
+                    let mut ray = camera.ray(u, v);
 
-                const MAX_BOUNCES: usize = 50;
+                    const MAX_BOUNCES: usize = 50;
 
-                let mut i = 0;
-                let mut attenuation = vec3(1.0, 1.0, 1.0);
-                let color = loop {
-                    if i > MAX_BOUNCES {
-                        break black();
-                    }
+                    let mut i = 0;
+                    let mut attenuation = vec3(1.0, 1.0, 1.0);
+                    let color = loop {
+                        if i > MAX_BOUNCES {
+                            break black();
+                        }
 
-                    match world.hit(ray, 0.001..f32::INFINITY) {
-                        Some(hit) => {
-                            match hit.material.scatter(&mut rng, ray, hit.p, hit.normal) {
-                                Some((attenuation_increment, scattered)) => {
-                                    attenuation *= attenuation_increment;
-                                    ray = scattered;
-                                    i += 1;
-                                },
-                                None => break black(),
+                        match world.hit(ray, 0.001..f32::INFINITY) {
+                            Some(hit) => {
+                                match hit.material.scatter(&mut rng, ray, hit.p, hit.normal) {
+                                    Some((attenuation_increment, scattered)) => {
+                                        attenuation *= attenuation_increment;
+                                        ray = scattered;
+                                        i += 1;
+                                    }
+                                    None => break black(),
+                                }
                             }
+                            None => break background_color(ray),
+                        }
+                    };
 
-                        },
-                        None => break background_color(ray),
-                    }
-                };
+                    pixel += color * attenuation;
+                }
 
-                pixel += color * attenuation;
+                let color = pixel / samples_per_pixel as f32;
+                let color = vec3(color.x().sqrt(), color.y().sqrt(), color.z().sqrt()); // gamma correction
+
+                line[i] = color;
             }
-
-
-            let color = pixel / samples_per_pixel as f32;
-            let color = vec3(color.x().sqrt(), color.y().sqrt(), color.z().sqrt()); // gamma correction
-
-            line[i] = color;
-        }
-    });
+        });
 
     let out = File::create("out.ppm")?;
     let mut out = BufWriter::new(out);
