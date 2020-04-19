@@ -3,9 +3,10 @@ use std::io::{self, Write, BufWriter};
 use std::ops::Range;
 use std::f32;
 
-use indicatif::ProgressIterator;
-use rand::random;
+use rayon::prelude::*;
 use glam::{Vec3, vec3};
+use rand::random;
+use indicatif::ParallelProgressIterator;
 
 
 fn white() -> Vec3 {
@@ -59,6 +60,10 @@ impl Image {
     pub fn set(&mut self, (x, y): (usize, usize), pixel: Vec3) {
         let index = y * self.width + x;
         self.data[index] = pixel;
+    }
+
+    pub fn data_mut(&mut self) -> &mut [Vec3] {
+        &mut self.data[..]
     }
 
     // write as PPM
@@ -361,12 +366,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     ];
 
-    for j in (0..image.height()).progress() {
-        for i in 0..image.width() {
+    let height = image.height();
+    let width = image.width();
+
+    image.data_mut().par_chunks_mut(width).enumerate().progress_count(height as u64).for_each(|(k, line)| {
+        let j = height - k - 1;
+        for i in 0..width {
             let mut pixel = black();
             for _ in 0..samples_per_pixel {
-                let u = (i as f32 + random::<f32>()) / image.width() as f32;
-                let v = (j as f32 + random::<f32>()) / image.height() as f32;
+                let u = (i as f32 + random::<f32>()) / width as f32;
+                let v = (j as f32 + random::<f32>()) / height as f32;
                 let mut ray = camera.ray(u, v);
 
                 const MAX_BOUNCES: usize = 50;
@@ -401,12 +410,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let color = pixel / samples_per_pixel as f32;
             let color = vec3(color.x().sqrt(), color.y().sqrt(), color.z().sqrt()); // gamma correction
 
-            image.set(
-                (i, image.height() - j - 1),
-                color
-            );
+            line[i] = color;
         }
-    }
+    });
 
     let out = File::create("out.ppm")?;
     let mut out = BufWriter::new(out);
