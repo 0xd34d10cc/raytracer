@@ -5,7 +5,8 @@ use std::f32;
 
 use rayon::prelude::*;
 use glam::{Vec3, vec3};
-use rand::random;
+use rand::Rng;
+use rand::rngs::ThreadRng;
 use indicatif::ParallelProgressIterator;
 
 
@@ -230,10 +231,10 @@ enum MaterialKind {
 }
 
 impl Material {
-    fn scatter(&self, ray: Ray, at: Vec3, normal: Vec3) -> Option<(Vec3, Ray)> {
+    fn scatter(&self, rng: &mut ThreadRng, ray: Ray, at: Vec3, normal: Vec3) -> Option<(Vec3, Ray)> {
         match self.kind {
             MaterialKind::Lambertian => {
-                let direction = normal + random_unit_vec3();
+                let direction = normal + random_unit_vec3(rng);
                 let scattered = Ray {
                     origin: at,
                     direction
@@ -244,7 +245,7 @@ impl Material {
                 let reflected = reflect(ray.direction.normalize(), normal);
                 let scattered = Ray {
                     origin: at,
-                    direction: reflected + self.fuzz * random_in_unit_sphere(),
+                    direction: reflected + self.fuzz * random_in_unit_sphere(rng),
                 };
 
                 if scattered.direction().dot(normal) > 0.0 {
@@ -292,21 +293,21 @@ fn reflect(v: Vec3, normal: Vec3) -> Vec3 {
 }
 
 // cos(x) distribution
-fn random_unit_vec3() -> Vec3 {
-    let a = random::<f32>() * 2.0 * f32::consts::PI;
-    let z = -1.0 + random::<f32>() * 2.0;
+fn random_unit_vec3(rng: &mut ThreadRng) -> Vec3 {
+    let a = rng.gen::<f32>() * 2.0 * f32::consts::PI;
+    let z = -1.0 + rng.gen::<f32>() * 2.0;
     let r = (1.0 - z).sqrt();
 
     vec3(r * f32::cos(a), r * f32::sin(a), z)
 }
 
-fn random_vec3(min: f32, max: f32) -> Vec3 {
-    Vec3::splat(min) + vec3(random::<f32>(), random::<f32>(), random::<f32>()) * (max - min)
+fn random_vec3(rng: &mut ThreadRng, min: f32, max: f32) -> Vec3 {
+    Vec3::splat(min) + vec3(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) * (max - min)
 }
 
-fn random_in_unit_sphere() -> Vec3 {
+fn random_in_unit_sphere(rng: &mut ThreadRng) -> Vec3 {
     loop {
-        let v = random_vec3(-1.0, 1.0);
+        let v = random_vec3(rng, -1.0, 1.0);
         if v.length_squared() < 1.0 {
             break v;
         }
@@ -370,12 +371,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = image.width();
 
     image.data_mut().par_chunks_mut(width).enumerate().progress_count(height as u64).for_each(|(k, line)| {
+        let mut rng = rand::thread_rng();
+
         let j = height - k - 1;
         for i in 0..width {
             let mut pixel = black();
             for _ in 0..samples_per_pixel {
-                let u = (i as f32 + random::<f32>()) / width as f32;
-                let v = (j as f32 + random::<f32>()) / height as f32;
+                let u = (i as f32 + rng.gen::<f32>()) / width as f32;
+                let v = (j as f32 + rng.gen::<f32>()) / height as f32;
                 let mut ray = camera.ray(u, v);
 
                 const MAX_BOUNCES: usize = 50;
@@ -389,7 +392,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     match world.hit(ray, 0.001..f32::INFINITY) {
                         Some(hit) => {
-                            match hit.material.scatter(ray, hit.p, hit.normal) {
+                            match hit.material.scatter(&mut rng, ray, hit.p, hit.normal) {
                                 Some((attenuation_increment, scattered)) => {
                                     attenuation *= attenuation_increment;
                                     ray = scattered;
