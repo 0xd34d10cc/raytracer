@@ -108,15 +108,17 @@ fn background_color(ray: Ray) -> Vec3 {
 struct Sphere {
     center: Vec3,
     radius: f64,
+    material: Material,
 }
 
 // Information about ray hit
 #[derive(Debug, Clone)]
 struct HitRecord {
-    t: f64,           // "time" of hit
-    p: Vec3,          // point at which hit have happened
-    normal: Vec3,     // normal to the surface at point P
-    front_face: bool, // true if ray is outside the object
+    t: f64,                 // "time" of hit
+    p: Vec3,                // point at which hit have happened
+    normal: Vec3,           // normal to the surface at point P
+    front_face: bool,       // true if ray is outside the object
+    material: Material,     // material of hit target
 }
 
 trait Hit {
@@ -162,6 +164,7 @@ impl Hit for Sphere {
                     -outward_normal
                 },
                 front_face,
+                material: self.material.clone(),
             })
         };
 
@@ -197,6 +200,51 @@ where
     }
 }
 
+// trait Material {
+//     fn scatter(&self, ray: Ray, hit: HitRecord) -> Option<(Vec3, Ray)>; // (attenuation, scattered)
+// }
+
+#[derive(Debug, Clone)]
+struct Material {
+    kind: MaterialKind,
+    albedo: Vec3,
+    fuzz: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MaterialKind {
+    Lambertian,
+    Metal,
+}
+
+impl Material {
+    fn scatter(&self, ray: Ray, at: Vec3, normal: Vec3) -> Option<(Vec3, Ray)> {
+        match self.kind {
+            MaterialKind::Lambertian => {
+                let direction = normal + random_unit_vec3();
+                let scattered = Ray {
+                    origin: at,
+                    direction
+                };
+                Some((self.albedo, scattered))
+            },
+            MaterialKind::Metal => {
+                let reflected = reflect(ray.direction.unit(), normal);
+                let scattered = Ray {
+                    origin: at,
+                    direction: reflected + self.fuzz * random_in_unit_sphere(),
+                };
+
+                if scattered.direction().dot(normal) > 0.0 {
+                    Some((self.albedo, scattered))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 struct Camera {
     lower_left_corner: Vec3,
     horizontal: Vec3,
@@ -225,6 +273,10 @@ impl Default for Camera {
     }
 }
 
+fn reflect(v: Vec3, normal: Vec3) -> Vec3 {
+    v - 2.0 * v.dot(normal) * normal
+}
+
 // cos(x) distribution
 fn random_unit_vec3() -> Vec3 {
     let a = random::<f64>() * 2.0 * f64::consts::PI;
@@ -247,15 +299,14 @@ fn random_in_unit_sphere() -> Vec3 {
     }
 }
 
-fn random_in_hemisphere(normal: Vec3) -> Vec3 {
-    let in_unit = random_in_unit_sphere();
-    if in_unit.dot(normal) >= 0.0 { // In the same hemisphere as normal
-        in_unit
-    } else {
-        -in_unit
-    }
-}
-
+// fn random_in_hemisphere(normal: Vec3) -> Vec3 {
+//     let in_unit = random_in_unit_sphere();
+//     if in_unit.dot(normal) >= 0.0 { // In the same hemisphere as normal
+//         in_unit
+//     } else {
+//         -in_unit
+//     }
+// }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut image = Image::new(200, 100);
@@ -266,11 +317,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Sphere {
             center: vec3(0.0, 0.0, -1.0),
             radius: 0.5,
+            material: Material {
+                kind: MaterialKind::Lambertian,
+                albedo: vec3(0.7, 0.3, 0.3),
+                fuzz: 1.0,
+            },
         },
         Sphere {
             center: vec3(0.0, -100.5, -1.0),
             radius: 100.0,
+            material: Material {
+                kind: MaterialKind::Lambertian,
+                albedo: vec3(0.8, 0.8, 0.0),
+                fuzz: 1.0,
+            }
         },
+        Sphere {
+            center: vec3(1.0, 0.0, -1.0),
+            radius: 0.5,
+            material: Material {
+                kind: MaterialKind::Metal,
+                albedo: vec3(0.8, 0.6, 0.2),
+                fuzz: 1.0,
+            }
+        },
+        Sphere {
+            center: vec3(-1.0, 0.0, -1.0),
+            radius: 0.5,
+            material: Material {
+                kind: MaterialKind::Metal,
+                albedo: vec3(0.8, 0.8, 0.8),
+                fuzz: 0.3,
+            }
+        }
     ];
 
     for j in 0..image.height() {
@@ -290,35 +369,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 const MAX_BOUNCES: usize = 50;
 
-                let mut brightness = 1.0;
                 let mut i = 0;
+                let mut attenuation = vec3(1.0, 1.0, 1.0);
                 let color = loop {
                     if i > MAX_BOUNCES {
                         break Vec3::black();
                     }
 
                     match world.hit(ray, 0.001..std::f64::INFINITY) {
-                        Some(record) => {
-                            let target = record.p + random_in_hemisphere(record.normal); // or record.normal + random_vec3()
+                        Some(hit) => {
+                            match hit.material.scatter(ray, hit.p, hit.normal) {
+                                Some((attenuation_increment, scattered)) => {
+                                    attenuation *= attenuation_increment;
+                                    ray = scattered;
+                                    i += 1;
+                                },
+                                None => break Vec3::black(),
+                            }
 
-                            // bounce
-                            ray = Ray {
-                                origin: record.p,
-                                direction: target - record.p
-                            };
-
-                            i += 1;
-
-                            // light partially gets absorbed
-                            brightness *= 0.5;
-
-                            // continue
                         },
                         None => break background_color(ray),
                     }
                 };
 
-                pixel += color * brightness;
+                pixel += color * attenuation;
             }
 
 
