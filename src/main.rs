@@ -5,9 +5,10 @@ use std::ops::Range;
 
 use glam::{vec3, Vec3};
 use indicatif::ParallelProgressIterator;
-use rand::rngs::ThreadRng;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
+
+type RngGen = rand::rngs::SmallRng;
 
 #[inline(always)]
 fn white() -> Vec3 {
@@ -241,7 +242,7 @@ impl Material {
     #[inline(always)]
     fn scatter(
         &self,
-        rng: &mut ThreadRng,
+        rng: &mut RngGen,
         ray: Ray,
         at: Vec3,
         normal: Vec3,
@@ -308,7 +309,7 @@ fn reflect(v: Vec3, normal: Vec3) -> Vec3 {
 
 // cos(x) distribution
 #[inline(always)]
-fn random_unit_vec3(rng: &mut ThreadRng) -> Vec3 {
+fn random_unit_vec3(rng: &mut RngGen) -> Vec3 {
     let a = rng.gen::<f32>() * 2.0 * f32::consts::PI;
     let z = -1.0 + rng.gen::<f32>() * 2.0;
     let r = (1.0 - z).sqrt();
@@ -317,12 +318,12 @@ fn random_unit_vec3(rng: &mut ThreadRng) -> Vec3 {
 }
 
 #[inline(always)]
-fn random_vec3(rng: &mut ThreadRng, min: f32, max: f32) -> Vec3 {
+fn random_vec3(rng: &mut RngGen, min: f32, max: f32) -> Vec3 {
     Vec3::splat(min) + vec3(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) * (max - min)
 }
 
 #[inline(always)]
-fn random_in_unit_sphere(rng: &mut ThreadRng) -> Vec3 {
+fn random_in_unit_sphere(rng: &mut RngGen) -> Vec3 {
     loop {
         let v = random_vec3(rng, -1.0, 1.0);
         if v.length_squared() < 1.0 {
@@ -394,6 +395,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .progress_count(height as u64)
         .for_each(|(k, line)| {
             let mut rng = rand::thread_rng();
+            let mut rng = RngGen::from_rng(&mut rng).unwrap();
 
             let j = height - k - 1;
             for i in 0..width {
