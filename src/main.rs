@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{self, Write};
 use std::ops::Range;
+use std::f64;
 
 use rand::random;
 
@@ -224,12 +225,17 @@ impl Default for Camera {
     }
 }
 
+// cos(x) distribution
 fn random_unit_vec3() -> Vec3 {
-    vec3(random::<f64>(), random::<f64>(), random::<f64>())
+    let a = random::<f64>() * 2.0 * f64::consts::PI;
+    let z = -1.0 + random::<f64>() * 2.0;
+    let r = (1.0 - z).sqrt();
+
+    vec3(r * f64::cos(a), r * f64::sin(a), z)
 }
 
 fn random_vec3(min: f64, max: f64) -> Vec3 {
-    Vec3::splat(min) + random_unit_vec3() * (max - min)
+    Vec3::splat(min) + vec3(random::<f64>(), random::<f64>(), random::<f64>()) * (max - min)
 }
 
 fn random_in_unit_sphere() -> Vec3 {
@@ -240,6 +246,16 @@ fn random_in_unit_sphere() -> Vec3 {
         }
     }
 }
+
+fn random_in_hemisphere(normal: Vec3) -> Vec3 {
+    let in_unit = random_in_unit_sphere();
+    if in_unit.dot(normal) >= 0.0 { // In the same hemisphere as normal
+        in_unit
+    } else {
+        -in_unit
+    }
+}
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut image = Image::new(200, 100);
@@ -283,7 +299,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     match world.hit(ray, 0.001..std::f64::INFINITY) {
                         Some(record) => {
-                            let target = record.p + record.normal + random_in_unit_sphere();
+                            let target = record.p + random_in_hemisphere(record.normal); // or record.normal + random_vec3()
 
                             // bounce
                             ray = Ray {
@@ -310,7 +326,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             image.set(
                 (i, image.height() - j - 1),
-                color //.sqrt(),
+                color.sqrt(), // gamma correction
             );
         }
     }
