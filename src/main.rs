@@ -6,9 +6,10 @@ use std::ops::Range;
 use glam::{vec3, Vec3};
 use indicatif::ParallelProgressIterator;
 use rand::{Rng, SeedableRng};
+use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
 
-type RngGen = rand::rngs::SmallRng;
+type RngGen = XorShiftRng;
 
 #[inline(always)]
 fn white() -> Vec3 {
@@ -394,8 +395,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enumerate()
         .progress_count(height as u64)
         .for_each(|(k, line)| {
-            let mut rng = rand::thread_rng();
-            let mut rng = RngGen::from_rng(&mut rng).unwrap();
+            let mut rng = RngGen::seed_from_u64(0xd34d10cc_d34dc0d3);
 
             let j = height - k - 1;
             for i in 0..width {
