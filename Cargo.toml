@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rand = { version = "0.7.3", default-features = false }
+rand = "0.7.3"
 rand_xorshift = "0.2.0"
 indicatif = { version = "0.14.0", features = ["with_rayon"] }
 glam = "0.8.6"

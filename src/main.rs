@@ -395,7 +395,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enumerate()
         .progress_count(height as u64)
         .for_each(|(k, line)| {
-            let mut rng = RngGen::seed_from_u64(0xd34d10cc_d34dc0d3);
+            let seed = rand::thread_rng().gen::<u64>();
+            let mut rng = RngGen::seed_from_u64(seed);
 
             let j = height - k - 1;
             for i in 0..width {
