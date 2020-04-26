@@ -444,13 +444,108 @@ fn random_in_unit_disk(rng: &mut RngGen) -> Vec3 {
     }
 }
 
+fn random_scene() -> Vec<Sphere> {
+    let seed = rand::thread_rng().gen::<u64>();
+    let mut rng = RngGen::seed_from_u64(seed);
+
+    let mut spheres = Vec::new();
+    spheres.push(Sphere {
+        center: vec3(0.0, -1000.0, 0.0),
+        radius: 1000.0,
+        material: Material {
+            kind: MaterialKind::Lambertian,
+            albedo: vec3(0.5, 0.5, 0.5),
+            fuzz: 0.0,
+        }
+    });
+
+    for a in -11..11 {
+        for b in -11..11 {
+            let choose_mat = rng.gen::<f32>();
+            let center = vec3(a as f32 + 0.9 * rng.gen::<f32>(), 0.2, b as f32 + 0.9 * rng.gen::<f32>());
+
+            if (center - vec3(4.0, 0.2, 0.0)).length() > 0.9 {
+                if choose_mat < 0.8 {
+                    // diffuse
+                    let albedo = random_vec3(&mut rng, 0.0, 1.0) * random_vec3(&mut rng, 0.0, 1.0);
+                    spheres.push(Sphere {
+                        center,
+                        radius: 0.2,
+                        material: Material {
+                            kind: MaterialKind::Lambertian,
+                            albedo,
+                            fuzz: 0.0,
+                        }
+                    })
+                } else if choose_mat < 0.95 {
+                    // metal
+                    let albedo = random_vec3(&mut rng, 0.5, 1.0);
+                    let fuzz = rng.gen::<f32>() / 2.0;
+                    spheres.push(Sphere {
+                        center,
+                        radius: 0.2,
+                        material: Material {
+                            kind: MaterialKind::Metal,
+                            albedo,
+                            fuzz
+                        }
+                    });
+                } else {
+                    // glass
+                    spheres.push(Sphere {
+                        center,
+                        radius: 0.2,
+                        material: Material {
+                            kind: MaterialKind::Dielectric,
+                            albedo: vec3(0.0, 0.0, 0.0),
+                            fuzz: 1.5,
+                        }
+                    })
+                }
+            }
+        }
+    }
+
+    spheres.push(Sphere {
+        center: vec3(0.0, 1.0, 0.0),
+        radius: 1.0,
+        material: Material {
+            kind: MaterialKind::Dielectric,
+            albedo: vec3(0.0, 0.0, 0.0),
+            fuzz: 1.5,
+        }
+    });
+
+    spheres.push(Sphere {
+        center: vec3(-4.0, 1.0, 0.0),
+        radius: 1.0,
+        material: Material {
+            kind: MaterialKind::Lambertian,
+            albedo: vec3(0.4, 0.2, 0.1),
+            fuzz: 0.0,
+        }
+    });
+
+    spheres.push(Sphere {
+        center: vec3(4.0, 1.0, 0.0),
+        radius: 1.0,
+        material: Material {
+            kind: MaterialKind::Metal,
+            albedo: vec3(0.7, 0.6, 0.5),
+            fuzz: 0.0,
+        }
+    });
+
+    spheres
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut image = Image::new(1600, 800);
 
-    let samples_per_pixel = 100;
+    let samples_per_pixel = 500;
 
-    let lookfrom = vec3(3.0, 3.0, 2.0);
-    let lookat = vec3(0.0, 0.0, -1.0);
+    let lookfrom = vec3(13.0, 2.0, 3.0);
+    let lookat = vec3(0.0, 0.0, 0.0);
     let aspect_ratio = image.width() as f32 / image.height() as f32;
     let camera = Camera::new(
         lookfrom,
@@ -458,56 +553,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec3(0.0, 1.0, 0.0),
         20.0,
         aspect_ratio,
-        2.0,
-        (lookfrom - lookat).length()
+        0.1,
+        10.0
     );
-    let world = vec![
-        Sphere {
-            center: vec3(0.0, 0.0, -1.0),
-            radius: 0.5,
-            material: Material {
-                kind: MaterialKind::Lambertian,
-                albedo: vec3(0.1, 0.2, 0.5),
-                fuzz: 1.0,
-            },
-        },
-        Sphere {
-            center: vec3(0.0, -100.5, -1.0),
-            radius: 100.0,
-            material: Material {
-                kind: MaterialKind::Lambertian,
-                albedo: vec3(0.8, 0.8, 0.0),
-                fuzz: 1.0,
-            },
-        },
-        Sphere {
-            center: vec3(1.0, 0.0, -1.0),
-            radius: 0.5,
-            material: Material {
-                kind: MaterialKind::Metal,
-                albedo: vec3(0.8, 0.6, 0.2),
-                fuzz: 0.0,
-            },
-        },
-        Sphere {
-            center: vec3(-1.0, 0.0, -1.0),
-            radius: 0.5,
-            material: Material {
-                kind: MaterialKind::Dielectric,
-                albedo: vec3(0.8, 0.8, 0.8),
-                fuzz: 1.5,
-            },
-        },
-        Sphere {
-            center: vec3(-1.0, 0.0, -1.0),
-            radius: -0.45,
-            material: Material {
-                kind: MaterialKind::Dielectric,
-                albedo: vec3(0.8, 0.8, 0.8),
-                fuzz: 1.5,
-            },
-        },
-    ];
+    let world = random_scene();
 
     let height = image.height();
     let width = image.width();
