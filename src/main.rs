@@ -230,15 +230,15 @@ where
 struct Material {
     kind: MaterialKind,
     albedo: Vec3, // how much this material absorbs from different channels (r, g, b)
-                  // or simply put - color
-    fuzz: f32,    // ref_idx for Dielectric
+    // or simply put - color
+    fuzz: f32, // ref_idx for Dielectric
 }
 
 #[derive(Debug, Clone, Copy)]
 enum MaterialKind {
     Lambertian,
     Metal,
-    Dielectric
+    Dielectric,
 }
 
 impl Material {
@@ -272,15 +272,11 @@ impl Material {
                 } else {
                     None
                 }
-            },
+            }
             MaterialKind::Dielectric => {
                 let attenuation = vec3(1.0, 1.0, 1.0);
                 let ref_idx = self.fuzz;
-                let etai_over_etat = if front_face {
-                    1.0 / ref_idx
-                } else {
-                    ref_idx
-                };
+                let etai_over_etat = if front_face { 1.0 / ref_idx } else { ref_idx };
 
                 fn min(a: f32, b: f32) -> f32 {
                     if a > b {
@@ -292,7 +288,7 @@ impl Material {
 
                 let unit_direction = ray.direction().normalize();
                 let cos_theta = min((-unit_direction).dot(normal), 1.0);
-                let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
+                let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
                 if etai_over_etat * sin_theta > 1.0 {
                     // reflect
                     let reflected = reflect(unit_direction, normal);
@@ -300,7 +296,7 @@ impl Material {
                         origin: at,
                         direction: reflected,
                     };
-                    return Some((attenuation, scattered))
+                    return Some((attenuation, scattered));
                 }
 
                 let reflect_prob = schlick(cos_theta, etai_over_etat);
@@ -314,11 +310,10 @@ impl Material {
                     return Some((attenuation, scattered));
                 }
 
-
                 let refracted = refract(unit_direction, normal, etai_over_etat);
                 let scattered = Ray {
                     origin: at,
-                    direction: refracted
+                    direction: refracted,
                 };
                 Some((attenuation, scattered))
             }
@@ -327,30 +322,37 @@ impl Material {
 }
 
 struct Camera {
+    origin: Vec3,
     lower_left_corner: Vec3,
     horizontal: Vec3,
     vertical: Vec3,
-    origin: Vec3,
 }
 
 impl Camera {
+    // NOTE: fov is vertical, in degrees
+    fn new(lookfrom: Vec3, lookat: Vec3, view_up: Vec3, fov: f32, aspect: f32) -> Camera {
+        let theta = fov.to_radians();
+        let half_height = (theta / 2.0).tan();
+        let half_width = aspect * half_height;
+
+        let w = (lookfrom - lookat).normalize();
+        let u = view_up.cross(w).normalize();
+        let v = w.cross(u);
+
+        Camera {
+            origin: lookfrom,
+            lower_left_corner: lookfrom - half_width * u - half_height * v - w,
+            horizontal: 2.0 * half_width * u,
+            vertical: 2.0 * half_height * v,
+        }
+    }
+
     #[inline(always)]
     fn ray(&self, u: f32, v: f32) -> Ray {
         Ray {
             origin: self.origin,
             direction: self.lower_left_corner + u * self.horizontal + v * self.vertical
                 - self.origin,
-        }
-    }
-}
-
-impl Default for Camera {
-    fn default() -> Self {
-        Camera {
-            lower_left_corner: vec3(-2.0, -1.0, -1.0),
-            horizontal: vec3(4.0, 0.0, 0.0),
-            vertical: vec3(0.0, 2.0, 0.0),
-            origin: Vec3::default(),
         }
     }
 }
@@ -363,7 +365,7 @@ fn reflect(v: Vec3, normal: Vec3) -> Vec3 {
 #[inline(always)]
 fn refract(v: Vec3, normal: Vec3, etai_over_etat: f32) -> Vec3 {
     let cos_theta = (-v).dot(normal);
-    let r_out_parallel = etai_over_etat * (v + cos_theta*normal);
+    let r_out_parallel = etai_over_etat * (v + cos_theta * normal);
     let r_out_perp = -(1.0 - r_out_parallel.length_squared()).sqrt() * normal;
     r_out_parallel + r_out_perp
 }
@@ -371,10 +373,11 @@ fn refract(v: Vec3, normal: Vec3, etai_over_etat: f32) -> Vec3 {
 #[inline(always)]
 fn schlick(cosine: f32, ref_idx: f32) -> f32 {
     let mut r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
-    r0 = r0*r0;
+    r0 = r0 * r0;
     // pow(1.0 - cosine, 5)
     let base = 1.0 - cosine;
-    let rhs = base * base * base * base * base;
+    let base_squared = base * base;
+    let rhs = base_squared * base_squared * base;
     r0 + (1.0 - r0) * rhs
 }
 
@@ -416,7 +419,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut image = Image::new(1600, 800);
 
     let samples_per_pixel = 100;
-    let camera = Camera::default();
+    let aspect_ratio = image.width() as f32 / image.height() as f32;
+    let camera = Camera::new(
+        vec3(-2.0, 2.0, 1.0),
+        vec3(0.0, 0.0, -1.0),
+        vec3(0.0, 1.0, 0.0),
+        90.0,
+        aspect_ratio,
+    );
     let world = vec![
         Sphere {
             center: vec3(0.0, 0.0, -1.0),
@@ -460,9 +470,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             material: Material {
                 kind: MaterialKind::Dielectric,
                 albedo: vec3(0.8, 0.8, 0.8),
-                fuzz: 1.5
-            }
-        }
+                fuzz: 1.5,
+            },
+        },
     ];
 
     let height = image.height();
@@ -496,7 +506,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         match world.hit(ray, 0.001..f32::INFINITY) {
                             Some(hit) => {
-                                match hit.material.scatter(&mut rng, ray, hit.p, hit.normal, hit.front_face) {
+                                match hit.material.scatter(
+                                    &mut rng,
+                                    ray,
+                                    hit.p,
+                                    hit.normal,
+                                    hit.front_face,
+                                ) {
                                     Some((attenuation_increment, scattered)) => {
                                         attenuation *= attenuation_increment;
                                         ray = scattered;
