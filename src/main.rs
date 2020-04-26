@@ -326,11 +326,23 @@ struct Camera {
     lower_left_corner: Vec3,
     horizontal: Vec3,
     vertical: Vec3,
+    lens_radius: f32,
+    u: Vec3,
+    v: Vec3,
+    w: Vec3,
 }
 
 impl Camera {
     // NOTE: fov is vertical, in degrees
-    fn new(lookfrom: Vec3, lookat: Vec3, view_up: Vec3, fov: f32, aspect: f32) -> Camera {
+    fn new(
+        lookfrom: Vec3,
+        lookat: Vec3,
+        view_up: Vec3,
+        fov: f32,
+        aspect: f32,
+        aperture: f32,
+        focus_dist: f32,
+    ) -> Camera {
         let theta = fov.to_radians();
         let half_height = (theta / 2.0).tan();
         let half_width = aspect * half_height;
@@ -341,18 +353,28 @@ impl Camera {
 
         Camera {
             origin: lookfrom,
-            lower_left_corner: lookfrom - half_width * u - half_height * v - w,
-            horizontal: 2.0 * half_width * u,
-            vertical: 2.0 * half_height * v,
+            lower_left_corner: lookfrom
+                - half_width * focus_dist * u
+                - half_height * focus_dist * v
+                - focus_dist * w,
+            horizontal: 2.0 * half_width * focus_dist * u,
+            vertical: 2.0 * half_height * focus_dist * v,
+            lens_radius: aperture / 2.0,
+            u,
+            v,
+            w,
         }
     }
 
     #[inline(always)]
-    fn ray(&self, u: f32, v: f32) -> Ray {
+    fn ray(&self, u: f32, v: f32, rng: &mut RngGen) -> Ray {
+        let rd = self.lens_radius * random_in_unit_disk(rng);
+        let offset = self.u * rd.x() + self.v * rd.y();
+
         Ray {
-            origin: self.origin,
+            origin: self.origin + offset,
             direction: self.lower_left_corner + u * self.horizontal + v * self.vertical
-                - self.origin,
+                - self.origin - offset,
         }
     }
 }
@@ -406,26 +428,38 @@ fn random_in_unit_sphere(rng: &mut RngGen) -> Vec3 {
     }
 }
 
-// fn random_in_hemisphere(normal: Vec3) -> Vec3 {
-//     let in_unit = random_in_unit_sphere();
-//     if in_unit.dot(normal) >= 0.0 { // In the same hemisphere as normal
-//         in_unit
-//     } else {
-//         -in_unit
-//     }
-// }
+#[inline(always)]
+fn random_in_unit_disk(rng: &mut RngGen) -> Vec3 {
+    loop {
+        let v = vec3(
+            // [-1.0, 1.0]
+            rng.gen::<f32>() * 2.0 - 1.0,
+            rng.gen::<f32>() * 2.0 - 1.0,
+            0.0,
+        );
+
+        if v.length_squared() < 1.0 {
+            break v;
+        }
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut image = Image::new(1600, 800);
 
     let samples_per_pixel = 100;
+
+    let lookfrom = vec3(3.0, 3.0, 2.0);
+    let lookat = vec3(0.0, 0.0, -1.0);
     let aspect_ratio = image.width() as f32 / image.height() as f32;
     let camera = Camera::new(
-        vec3(-2.0, 2.0, 1.0),
-        vec3(0.0, 0.0, -1.0),
+        lookfrom,
+        lookat,
         vec3(0.0, 1.0, 0.0),
-        90.0,
+        20.0,
         aspect_ratio,
+        2.0,
+        (lookfrom - lookat).length()
     );
     let world = vec![
         Sphere {
@@ -493,7 +527,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for _ in 0..samples_per_pixel {
                     let u = (i as f32 + rng.gen::<f32>()) / width as f32;
                     let v = (j as f32 + rng.gen::<f32>()) / height as f32;
-                    let mut ray = camera.ray(u, v);
+                    let mut ray = camera.ray(u, v, &mut rng);
 
                     const MAX_BOUNCES: usize = 50;
 
