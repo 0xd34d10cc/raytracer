@@ -176,7 +176,7 @@ impl Hit for Sphere {
             let outward_normal = (p - self.center) / self.radius;
             let front_face = ray.direction().dot(outward_normal).is_sign_negative();
 
-            Some(HitRecord {
+            HitRecord {
                 t,
                 p,
                 normal: if front_face {
@@ -186,16 +186,16 @@ impl Hit for Sphere {
                 },
                 front_face,
                 material: self.material.clone(),
-            })
+            }
         };
 
         if range.contains(&t) {
-            return hit(t);
+            return Some(hit(t));
         }
 
         let t = (-half_b + root) / a;
         if range.contains(&t) {
-            return hit(t);
+            return Some(hit(t));
         }
 
         None
@@ -229,14 +229,16 @@ where
 #[derive(Debug, Clone)]
 struct Material {
     kind: MaterialKind,
-    albedo: Vec3,
-    fuzz: f32,
+    albedo: Vec3, // how much this material absorbs from different channels (r, g, b)
+                  // or simply put - color
+    fuzz: f32,    // ref_idx for Dielectric
 }
 
 #[derive(Debug, Clone, Copy)]
 enum MaterialKind {
     Lambertian,
     Metal,
+    Dielectric
 }
 
 impl Material {
@@ -247,6 +249,7 @@ impl Material {
         ray: Ray,
         at: Vec3,
         normal: Vec3,
+        front_face: bool,
     ) -> Option<(Vec3, Ray)> {
         match self.kind {
             MaterialKind::Lambertian => {
@@ -269,6 +272,55 @@ impl Material {
                 } else {
                     None
                 }
+            },
+            MaterialKind::Dielectric => {
+                let attenuation = vec3(1.0, 1.0, 1.0);
+                let ref_idx = self.fuzz;
+                let etai_over_etat = if front_face {
+                    1.0 / ref_idx
+                } else {
+                    ref_idx
+                };
+
+                fn min(a: f32, b: f32) -> f32 {
+                    if a > b {
+                        b
+                    } else {
+                        a
+                    }
+                }
+
+                let unit_direction = ray.direction().normalize();
+                let cos_theta = min((-unit_direction).dot(normal), 1.0);
+                let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
+                if etai_over_etat * sin_theta > 1.0 {
+                    // reflect
+                    let reflected = reflect(unit_direction, normal);
+                    let scattered = Ray {
+                        origin: at,
+                        direction: reflected,
+                    };
+                    return Some((attenuation, scattered))
+                }
+
+                let reflect_prob = schlick(cos_theta, etai_over_etat);
+                if rng.gen::<f32>() < reflect_prob {
+                    // reflect
+                    let reflected = reflect(unit_direction, normal);
+                    let scattered = Ray {
+                        origin: at,
+                        direction: reflected,
+                    };
+                    return Some((attenuation, scattered));
+                }
+
+
+                let refracted = refract(unit_direction, normal, etai_over_etat);
+                let scattered = Ray {
+                    origin: at,
+                    direction: refracted
+                };
+                Some((attenuation, scattered))
             }
         }
     }
@@ -306,6 +358,24 @@ impl Default for Camera {
 #[inline(always)]
 fn reflect(v: Vec3, normal: Vec3) -> Vec3 {
     v - 2.0 * v.dot(normal) * normal
+}
+
+#[inline(always)]
+fn refract(v: Vec3, normal: Vec3, etai_over_etat: f32) -> Vec3 {
+    let cos_theta = (-v).dot(normal);
+    let r_out_parallel = etai_over_etat * (v + cos_theta*normal);
+    let r_out_perp = -(1.0 - r_out_parallel.length_squared()).sqrt() * normal;
+    r_out_parallel + r_out_perp
+}
+
+#[inline(always)]
+fn schlick(cosine: f32, ref_idx: f32) -> f32 {
+    let mut r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
+    r0 = r0*r0;
+    // pow(1.0 - cosine, 5)
+    let base = 1.0 - cosine;
+    let rhs = base * base * base * base * base;
+    r0 + (1.0 - r0) * rhs
 }
 
 // cos(x) distribution
@@ -353,7 +423,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             radius: 0.5,
             material: Material {
                 kind: MaterialKind::Lambertian,
-                albedo: vec3(0.7, 0.3, 0.3),
+                albedo: vec3(0.1, 0.2, 0.5),
                 fuzz: 1.0,
             },
         },
@@ -372,18 +442,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             material: Material {
                 kind: MaterialKind::Metal,
                 albedo: vec3(0.8, 0.6, 0.2),
-                fuzz: 0.7,
+                fuzz: 0.0,
             },
         },
         Sphere {
             center: vec3(-1.0, 0.0, -1.0),
             radius: 0.5,
             material: Material {
-                kind: MaterialKind::Metal,
+                kind: MaterialKind::Dielectric,
                 albedo: vec3(0.8, 0.8, 0.8),
-                fuzz: 0.3,
+                fuzz: 1.5,
             },
         },
+        Sphere {
+            center: vec3(-1.0, 0.0, -1.0),
+            radius: -0.45,
+            material: Material {
+                kind: MaterialKind::Dielectric,
+                albedo: vec3(0.8, 0.8, 0.8),
+                fuzz: 1.5
+            }
+        }
     ];
 
     let height = image.height();
@@ -417,7 +496,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         match world.hit(ray, 0.001..f32::INFINITY) {
                             Some(hit) => {
-                                match hit.material.scatter(&mut rng, ray, hit.p, hit.normal) {
+                                match hit.material.scatter(&mut rng, ray, hit.p, hit.normal, hit.front_face) {
                                     Some((attenuation_increment, scattered)) => {
                                         attenuation *= attenuation_increment;
                                         ray = scattered;
